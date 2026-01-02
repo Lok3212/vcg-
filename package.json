@@ -1,14 +1,20 @@
 {
-  "name": "vcg-bot",
+  "name": "arvex-ultimate-bot",
   "version": "1.0.0",
-  "description": "",
+  "description": "Discord Ultimate Bot (Stats, Level, Guard, Sicil, Kayıt, MongoDB, Express)",
   "main": "index.js",
+  "type": "commonjs",
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "dev": "node index.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   },
   "dependencies": {
-    "discord.js": "^14.13.0",
-    "mongoose": "^7.5.0"
+    "discord.js": "^14.15.3",
+    "mongoose": "^8.1.1",
+    "express": "^4.19.2",
+    "dotenv": "^16.4.5"
   }
 }
-

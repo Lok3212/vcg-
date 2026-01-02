@@ -530,7 +530,7 @@ if (interaction.isButton() && ["btn_k", "btn_l", "btn_s", "btn_ye"].includes(int
 
 const express = require('express');
 const app = express();
-const port = 3100;//buraya karışmayın.
+const port = 3000;//buraya karışmayın.
 
 app.get('/', (req, res) => res.send('we discord'));//değiştirebilirsiniz.
 
@@ -559,4 +559,5 @@ console.log(`Bot bu adres üzerinde çalışıyor: http://localhost:${port}`)//p
     process.on('uncaughtExceptionMonitor', (err, origin) => {
         console.log('⚠️ [Hata Yakalandı] - Exception Monitor:', err);
     });
+
 

@@ -530,13 +530,10 @@ if (interaction.isButton() && ["btn_k", "btn_l", "btn_s", "btn_ye"].includes(int
 
 const express = require('express');
 const app = express();
-const port = 3100;//buraya karışmayın.
-
-app.get('/', (req, res) => res.send('we discord'));//değiştirebilirsiniz.
-
-app.listen(port, () =>
-console.log(`Bot bu adres üzerinde çalışıyor: http://localhost:${port}`)//port
-);
+const port = process.env.PORT || 3100;
+app.listen(port, '0.0.0.0', () => {
+  console.log(`Bot ${port} portunda aktif`);
+});
 
     // --- BOTU LOGIN ET ---
     client.login(process.env.TOKEN).catch(e => {
@@ -559,3 +556,4 @@ console.log(`Bot bu adres üzerinde çalışıyor: http://localhost:${port}`)//p
     process.on('uncaughtExceptionMonitor', (err, origin) => {
         console.log('⚠️ [Hata Yakalandı] - Exception Monitor:', err);
     });
+

@@ -39,24 +39,6 @@ const NOT_YETKILISI_ID = "1411088827589595258";
 
 // ================= LİSTELER (HİÇBİR ŞEY EKSİLTİLMEDİ) =================
 
-const KUFUR_LISTESI = [
-    "amk", "amq", "aq", "amınakoyim", "amkoyim", "amınakoyayım", "amına", "amını", "aminakoyim", "mkk", "mk", "mq",
-    "siktir", "siktiğim", "siktiğimin", "sikerim", "sikiş", "sokuş", "sokarım", "sikik", "sokuk", "sik", "sktr", "siqtir",
-    "orospu", "orospuçocuğu", "oç", "oc", "o.ç", "o.çocuğu", "orospuevladı", "kahpe", "fahişe", "kancık",
-    "yavşak", "yawsak", "yavsak", "gavat", "gawad", "pezevenk", "pzw", "pznk", "godoş", "godos",
-    "piç", "pic", "puşt", "pust", "ibne", "top", "gay", "lez",
-    "yarrak", "yarak", "yarrrak", "yarakos", "taşşak", "dassak", "tassak", "amcık", "amcik", "amcıq", "mcık",
-    "göt", "got", "götveren", "götos", "götlek", "gotlek", "meme", "memeucu", "pipi", "vaji", "penis", "erotik",
-    "dalyarak", "taşşakkafalı", "am feryadı", "am hoşafı", "sik kafalı", "sik kırığı",
-    "şerefsiz", "serefsiz", "it", "köpek", "soysuz", "haysiyetsiz", "karaktersiz",
-    "gerizekalı", "gerizekali", "aptal", "salak", "mal", "beyinsiz", "beyniyok", "özürlü", "ozurlu",
-    "velet", "zargana", "kolsuz", "aptal", "embesil", "dangalak", "lavuk", "gevşek", "gewsek",
-    "atatürk", "atam", "atanı", "atasız", "atana", "atamıza",
-    "dinini", "imanını", "allahını", "kitabını", "peygamberini", "allahsız", "kitapsız",
-    "ebeni", "ceddini", "sülaleni", "aileni", "anasını", "babasını", "bacısını", "karısını",
-    "soyunun", "sopunu", "ırzını", "ahmet ege", "ahmet ege aydemir", "aydemir", "efe serin"
-];
-
 const CHAT_LEVEL_ROLES = [
     { level: 5, roleId: ["1434500874889334934"] },
     { level: 10, roleId: ["1434500883743244298", "1452254172391936103"] },
@@ -105,14 +87,6 @@ const VoiceUser = mongoose.model("VoiceUser", voiceUserSchema);
 const registerSchema = new mongoose.Schema({ userId: { type: String, unique: true }, name: String, age: Number, registeredAt: { type: Date, default: Date.now }, registeredBy: String });
 const RegisteredUser = mongoose.model("RegisteredUser", registerSchema);
 
-// JSON Dosya Yönetimi (Guard Logları & Notlar İçin)
-const loadData = (path) => { try { if (fs.existsSync(path)) return JSON.parse(fs.readFileSync(path, 'utf8')); } catch (e) { } return {}; };
-const saveData = (path, data) => fs.writeFileSync(path, JSON.stringify(data, null, 2));
-
-let ihlalTakip = loadData('guard_logs.json');
-let userNotes = loadData('user_notes.json');
-const db_settings = new Map(); // Sunucu koruma ayarları (RAM'de tutulur)
-
 // ================= CLIENT & DEĞİŞKENLER =================
 
 const client = new Client({
@@ -129,15 +103,6 @@ let activeChatBoostKanal = null;
 let activeVoiceBoostKanal = null;
 
 // ================= YARDIMCI FONKSİYONLAR =================
-
-// 1. Guard Filtreleme
-function filtreleGelismiş(text) {
-    return text.toLowerCase()
-        .replace(/ı/g, 'i').replace(/ü/g, 'u').replace(/ö/g, 'o').replace(/ş/g, 's').replace(/ç/g, 'c').replace(/ğ/g, 'g')
-        .replace(/0/g, 'o').replace(/1/g, 'i').replace(/3/g, 'e').replace(/4/g, 'a').replace(/5/g, 's').replace(/7/g, 't')
-        .replace(/(.)\1{2,}/g, '$1')
-        .replace(/[^\w\s]|_/g, "");
-}
 
 // 2. İlerleme Çubuğu (Gelişmiş)
 function createProgressBar(current, max = 100) {
@@ -273,42 +238,6 @@ client.on("voiceStateUpdate", async (oldState, newState) => {
 client.on("messageCreate", async (msg) => {
     if (msg.author.bot || !msg.guild) return;
 
-    // [A] GUARD KONTROLÜ (Öncelikli)
-    const settings = db_settings.get(msg.guild.id) || { kufur: false, link: false, spam: false, yoneticiEngel: false };
-    const isYonetici = msg.member.permissions.has(PermissionsBitField.Flags.Administrator) || msg.member.permissions.has(PermissionsBitField.Flags.ManageMessages);
-    const dokunulmazMi = isYonetici && !settings.yoneticiEngel;
-
-    if (!dokunulmazMi) {
-        let yasakli = false, sebep = "";
-
-        // Küfür Kontrolü
-        if (settings.kufur) {
-            const temiz = filtreleGelismiş(msg.content);
-            if (KUFUR_LISTESI.some(k => temiz.split(/\s+/).includes(filtreleGelismiş(k)) || (k.length > 3 && temiz.replace(/\s+/g, "").includes(filtreleGelismiş(k))))) {
-                yasakli = true; sebep = "Küfür";
-            }
-        }
-        // Link Kontrolü
-        if (!yasakli && settings.link && /(https?:\/\/|www\.|discord\.(gg|io|me|li))/gi.test(msg.content)) {
-            yasakli = true; sebep = "Reklam";
-        }
-
-        if (yasakli) {
-            await msg.delete().catch(() => {});
-            let uData = ihlalTakip[msg.author.id] || { ihlalSayisi: 0, geçmiş: [] };
-            uData.ihlalSayisi++;
-            uData.geçmiş.push({ tarih: new Date().toLocaleString("tr-TR"), sebep });
-            ihlalTakip[msg.author.id] = uData;
-            saveData('guard_logs.json', ihlalTakip);
-
-            // Timeout İşlemi
-            let mSure = uData.ihlalSayisi === 3 ? 10000 : uData.ihlalSayisi === 6 ? 60000 : uData.ihlalSayisi >= 10 ? 300000 : 0;
-            if (mSure > 0) await msg.member.timeout(mSure, `Guard İhlali - ${sebep}`).catch(() => {});
-
-            msg.channel.send(`🚫 ${msg.author}, mesajın engellendi! (**Sebep:** ${sebep} | **İhlal:** ${uData.ihlalSayisi})`).then(m => setTimeout(() => m.delete(), 5000));
-            return; // Guard'a takılan kod buradan sonrasını görmez.
-        }
-    }
 
     // [B] XP SİSTEMİ (Guard'dan geçen temiz mesajlar)
     if (!xpCooldowns.has(msg.author.id)) {
@@ -463,27 +392,6 @@ client.on("messageCreate", async (msg) => {
         } catch (error) { console.error("Kayıt Hatası:", error); msg.reply("Kayıt sırasında yetki hatası."); }
     }
 
-    // [.ayar] - Guard Ayarları
-    if (cmd === "ayar") {
-        if (!isYonetici && !isSahip) return;
-
-        // Veriyi çek (db_settings yoksa boş obje dön)
-        const c = db_settings.get(msg.guild.id) || { kufur: false, link: false, spam: false, yoneticiEngel: false };
-
-        const embed = new EmbedBuilder()
-            .setTitle("🛡️ Arvex Koruma Paneli")
-            .setColor("Blurple")
-            .setDescription("Korumaları yönetin. **Yönetici Engel** aktifse, yetkililer de kısıtlamalara dahil olur.");
-
-        const row = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId("btn_k").setLabel(`Küfür: ${c.kufur ? "AÇIK" : "KAPALI"}`).setStyle(c.kufur ? ButtonStyle.Success : ButtonStyle.Danger),
-            new ButtonBuilder().setCustomId("btn_l").setLabel(`Link: ${c.link ? "AÇIK" : "KAPALI"}`).setStyle(c.link ? ButtonStyle.Success : ButtonStyle.Danger),
-            new ButtonBuilder().setCustomId("btn_s").setLabel(`Spam: ${c.spam ? "AÇIK" : "KAPALI"}`).setStyle(c.spam ? ButtonStyle.Success : ButtonStyle.Danger),
-            new ButtonBuilder().setCustomId("btn_ye").setLabel(`Yön. Engel: ${c.yoneticiEngel ? "AÇIK" : "KAPALI"}`).setStyle(c.yoneticiEngel ? ButtonStyle.Success : ButtonStyle.Danger)
-        );
-
-        msg.reply({ embeds: [embed], components: [row] });
-    }
 
     // 9. [Boost Komutları]
     if (msg.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
@@ -498,32 +406,6 @@ client.on("messageCreate", async (msg) => {
     }
 });
 
-// interactionCreate içinde:
-    // Buradaki (interaction) önüne "async" ekledik:
-    client.on("interactionCreate", async (interaction) => {
-        
-if (interaction.isButton() && ["btn_k", "btn_l", "btn_s", "btn_ye"].includes(interaction.customId)) {
-    if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) return interaction.reply({content: "Yetkiniz yetersiz.", flags: MessageFlags.Ephemeral});
-
-    let c = db_settings.get(interaction.guildId) || { kufur: false, link: false, spam: false, yoneticiEngel: false };
-
-    if (interaction.customId === "btn_k") c.kufur = !c.kufur;
-    if (interaction.customId === "btn_l") c.link = !c.link;
-    if (interaction.customId === "btn_s") c.spam = !c.spam;
-    if (interaction.customId === "btn_ye") c.yoneticiEngel = !c.yoneticiEngel; // Yeni ayar
-
-    db_settings.set(interaction.guildId, c);
-
-    const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId("btn_k").setLabel(`Küfür: ${c.kufur?"AÇIK":"KAPALI"}`).setStyle(c.kufur?ButtonStyle.Success:ButtonStyle.Danger),
-        new ButtonBuilder().setCustomId("btn_l").setLabel(`Link: ${c.link?"AÇIK":"KAPALI"}`).setStyle(c.link?ButtonStyle.Success:ButtonStyle.Danger),
-        new ButtonBuilder().setCustomId("btn_s").setLabel(`Spam: ${c.spam?"AÇIK":"KAPALI"}`).setStyle(c.spam?ButtonStyle.Success:ButtonStyle.Danger),
-        new ButtonBuilder().setCustomId("btn_ye").setLabel(`Yön. Engel: ${c.yoneticiEngel?"AÇIK":"KAPALI"}`).setStyle(c.yoneticiEngel?ButtonStyle.Success:ButtonStyle.Danger)
-    );
-
-    await interaction.update({ components: [row] });
-  }
-    });
     // ==========================================
     // 6. EXPRESS SERVER & BOT BASLATMA
     // ==========================================
@@ -559,5 +441,6 @@ console.log(`Bot bu adres üzerinde çalışıyor: http://localhost:${port}`)//p
     process.on('uncaughtExceptionMonitor', (err, origin) => {
         console.log('⚠️ [Hata Yakalandı] - Exception Monitor:', err);
     });
+
 
 

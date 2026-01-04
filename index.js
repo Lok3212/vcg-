@@ -495,35 +495,63 @@ client.on("messageCreate", async (msg) => {
     }
    
     // 6. [.kayıt] - Kayıt İşlemi
-    if (cmd === "kayıt") {
-        if (!msg.member.roles.cache.has(CONF.ROLE_YETKILI) && !isYonetici) return;
-        const targetId = args[0]?.replace(/[<@!>]/g, "");
-        const name = args[1];
-        const age = args[2];
-
-        if (!targetId || !name || !age) return msg.reply("Kullanım: `.kayıt @kullanıcı İsim Yaş`");
-
-        try {
-            const member = await msg.guild.members.fetch(targetId).catch(() => null);
-            if (!member) return msg.reply("Kullanıcı bulunamadı.");
-
-            const newName = `${name.charAt(0).toUpperCase() + name.slice(1)} | ${age}`;
-            await member.setNickname(newName);
-            await member.roles.remove(CONF.ROLE_UNREGISTERED);
-            await member.roles.add(CONF.ROLE_MEMBER);
-
-            await RegisteredUser.findOneAndUpdate({ userId: member.id }, { name, age, registeredBy: msg.author.id }, { upsert: true });
-
-            const regEmbed = new EmbedBuilder()
-                .setTitle("✅ Kayıt Başarılı")
-                .setDescription(`**${member}** aramıza katıldı!\n**Yeni İsim:** \`${newName}\`\n**Yetkili:** ${msg.author}`)
-                .setColor("Green");
-            msg.reply({ embeds: [regEmbed] });
-
-            const logKanal = msg.guild.channels.cache.get(CONF.LOG_KANAL_REGISTER);
-            if(logKanal) logKanal.send({ embeds: [regEmbed] });
-        } catch (error) { console.error("Kayıt Hatası:", error); msg.reply("Kayıt sırasında yetki hatası."); }
+if (cmd === "kayıt") {
+    // KONTROL: Eğer Yetkili Rolü YOKSA -VE- Yönetici Yetkisi YOKSA işlemi durdur.
+    // Yani ikisinden biri varsa kod devam eder.
+    if (!msg.member.roles.cache.has(CONF.ROLE_YETKILI) && !isYonetici) {
+        return msg.reply("❌ Bu komutu kullanmak için yetkiniz yok.");
     }
+
+    const targetId = args[0]?.replace(/[<@!>]/g, "");
+    // args.slice(1, -1) gibi karmaşık yapılar yerine basit mantık:
+    // .kayıt @uye isim yaş
+    const name = args[1]; 
+    const age = args[2];
+
+    if (!targetId || !name || !age) return msg.reply("Kullanım: `.kayıt @kullanıcı İsim Yaş`\nÖrnek: `.kayıt @Ahmet Ahmet 18`");
+
+    try {
+        const member = await msg.guild.members.fetch(targetId).catch(() => null);
+        if (!member) return msg.reply("❌ Kullanıcı sunucuda bulunamadı.");
+
+        // İsim Düzenleme (İlk harf büyük gerisi küçük + yaş)
+        const formatName = name.charAt(0).toUpperCase() + name.slice(1).toLowerCase();
+        const newName = `${formatName} | ${age}`;
+
+        // Yetki Sıralaması Kontrolü (Botun yetkisi yetiyor mu?)
+        if (member.roles.highest.position >= msg.guild.members.me.roles.highest.position) {
+            return msg.reply("❌ Bu kullanıcının rolü benim rolümden yüksek veya eşit, ismini değiştiremem.");
+        }
+
+        await member.setNickname(newName).catch(e => console.log("İsim değiştirilemedi: " + e));
+        
+        // Rolleri Güncelle
+        await member.roles.remove(CONF.ROLE_UNREGISTERED).catch(() => {});
+        await member.roles.add(CONF.ROLE_MEMBER).catch(() => {});
+
+        // Veritabanına Yaz
+        await RegisteredUser.findOneAndUpdate(
+            { userId: member.id }, 
+            { name: formatName, age: parseInt(age), registeredBy: msg.author.id }, 
+            { upsert: true }
+        );
+
+        const regEmbed = new EmbedBuilder()
+            .setTitle("✅ Kayıt Başarılı")
+            .setDescription(`**${member}** aramıza katıldı!\n\n📛 **Yeni İsim:** \`${newName}\`\n👮 **Yetkili:** ${msg.author}`)
+            .setColor("Green")
+            .setTimestamp();
+            
+        msg.reply({ embeds: [regEmbed] });
+
+        const logKanal = msg.guild.channels.cache.get(CONF.LOG_KANAL_REGISTER);
+        if(logKanal) logKanal.send({ embeds: [regEmbed] });
+
+    } catch (error) { 
+        console.error("Kayıt Hatası:", error); 
+        msg.reply("⚠️ Kayıt işlemi sırasında bir hata oluştu."); 
+    }
+}
 
 
     // 9. [Boost Komutları]
@@ -574,6 +602,7 @@ console.log(`Bot bu adres üzerinde çalışıyor: http://localhost:${port}`)//p
     process.on('uncaughtExceptionMonitor', (err, origin) => {
         console.log('⚠️ [Hata Yakalandı] - Exception Monitor:', err);
     });
+
 
 
 

@@ -237,7 +237,6 @@ client.on("voiceStateUpdate", async (oldState, newState) => {
 client.on("messageCreate", async (msg) => {
     if (msg.author.bot || !msg.guild) return;
 
-
     // [B] XP SİSTEMİ (Guard'dan geçen temiz mesajlar)
     if (!xpCooldowns.has(msg.author.id)) {
         let user = await ChatUser.findOne({ userId: msg.author.id });
@@ -255,8 +254,9 @@ client.on("messageCreate", async (msg) => {
             needed = 100 + user.level * 200;
             const role = CHAT_LEVEL_ROLES.find(r => r.level === user.level);
             if (role) {
-                const allRoles = CHAT_LEVEL_ROLES.flatMap(r => r.roleId);
-                await msg.member.roles.remove(allRoles).catch(() => {});
+                // RoleId bir array olduğu için spread ile açıyoruz veya array desteği varsa direkt veriyoruz
+                // v14 array kabul eder ama hata riskine karşı flatMap zaten yukarıda kullanılmıştı, burada direkt ekliyoruz.
+                await msg.member.roles.remove(CHAT_LEVEL_ROLES.flatMap(r => r.roleId)).catch(() => {});
                 await msg.member.roles.add(role.roleId).catch(() => {});
             }
             const log = client.channels.cache.get(CONF.LOG_KANAL_CHAT_LEVEL);
@@ -273,7 +273,7 @@ client.on("messageCreate", async (msg) => {
     const args = msg.content.slice(PREFIX.length).trim().split(/\s+/);
     const cmd = args.shift().toLowerCase();
 
-// 1. [.rank] - MAX Level Korumalı
+    // 1. [.rank] - MAX Level Korumalı
     if (cmd === "rank") {
         const target = msg.mentions.users.first() || msg.author;
         const member = await msg.guild.members.fetch(target.id).catch(() => null);
@@ -285,7 +285,7 @@ client.on("messageCreate", async (msg) => {
         await checkSureRolleri(member);
 
         // --- AYARLAR ---
-        const MAX_LEVEL = 100; // Burayı istediğin sınır yapabilirsin (Örn: 60, 100, 500)
+        const MAX_LEVEL = 100;
         const isMaxed = u.level >= MAX_LEVEL;
         // ---------------
 
@@ -294,21 +294,19 @@ client.on("messageCreate", async (msg) => {
         let nextLevelText = "";
 
         if (isMaxed) {
-            // Maksimum seviyeye ulaştıysa
-            barDisplay = "🟦".repeat(10) + " (%100)"; // Full Bar
+            barDisplay = "🟦".repeat(10) + " (%100)";
             xpDisplay = "♾️ / ♾️";
             nextLevelText = "👑 **Maksimum Seviyeye Ulaştın!**";
         } else {
-            // Normal ilerleme
             const need = 100 + u.level * 200;
             barDisplay = createProgressBar(u.xp, need);
             xpDisplay = `${u.xp} / ${need}`;
-            nextLevelText = barDisplay; // Bar burada görünür
+            nextLevelText = barDisplay;
         }
 
         const embed = new EmbedBuilder()
             .setAuthor({ name: `${target.username} Rank Kartı`, iconURL: target.displayAvatarURL() })
-            .setColor(isMaxed ? "Gold" : "Blue") // Max ise ALTIN, değilse MAVİ
+            .setColor(isMaxed ? "Gold" : "Blue")
             .setThumbnail(target.displayAvatarURL({ dynamic: true }))
             .setDescription(`**Seviye:** ${u.level}\n**Mesaj:** ${u.totalMsg}`)
             .addFields(
@@ -317,11 +315,11 @@ client.on("messageCreate", async (msg) => {
                 { name: "İlerleme", value: nextLevelText, inline: false }
             )
             .setFooter({ text: isMaxed ? "Bu sunucunun zirvesindesin!" : (activeChatBoostKanal === msg.channel.id ? "🔥 2x XP Aktif!" : "Standart XP") });
-            
+
         return msg.reply({ embeds: [embed] });
     }
-   
-// 2. [.vc] - Son Rütbe Efektli
+
+    // 2. [.vc] - Son Rütbe Efektli
     if (cmd === "vc") {
         const target = msg.mentions.users.first() || msg.author;
         let user = await VoiceUser.findOne({ userId: target.id });
@@ -341,13 +339,11 @@ client.on("messageCreate", async (msg) => {
         let isMaxRank = false;
 
         if (nextTier) {
-            // Hala atlayacak rütbe var
             const needed = nextTier.requiredMinutes - currentTier.requiredMinutes;
             const current = totalMins - currentTier.requiredMinutes;
             const bar = createProgressBar(current, needed);
             progressStr = `${bar}\n**${nextTier.label}** için **${nextTier.requiredMinutes - totalMins}** dk kaldı.`;
         } else {
-            // Son rütbeye ulaşmış (Next Tier yok)
             isMaxRank = true;
             progressStr = "🎉 **Tebrikler! Sunucunun en yüksek ses rütbesindesin.**\n🟦🟦🟦🟦🟦🟦🟦🟦🟦🟦 (%100)";
         }
@@ -357,84 +353,147 @@ client.on("messageCreate", async (msg) => {
 
         const embed = new EmbedBuilder()
             .setAuthor({ name: `${target.username} Ses İstatistiği`, iconURL: target.displayAvatarURL() })
-            .setColor(isMaxRank ? "Gold" : "Green") // Son rütbedeyse ALTIN renk
+            .setColor(isMaxRank ? "Gold" : "Green")
             .setThumbnail(target.displayAvatarURL())
             .addFields(
                 { name: "🏷️ Rütbe", value: `\`${currentTier.label}\``, inline: true },
                 { name: "⏱️ Toplam Süre", value: `\`${hours} sa ${mins} dk\``, inline: true },
                 { name: isMaxRank ? "🏆 ZİRVE" : "📈 Sıradaki Hedef", value: progressStr, inline: false }
             );
-            
+
         return msg.reply({ embeds: [embed] });
     }
 
-    const hours = Math.floor(totalMins / 60);
-    const mins = totalMins % 60;
+    // 3. [.csıralama]
+    if (cmd === "csıralama") {
+        const top = await ChatUser.find().sort({ level: -1, xp: -1 }).limit(10);
+        if (!top.length) return msg.reply("Henüz veri yok.");
 
-    const embed = new EmbedBuilder()
-        .setAuthor({ name: `${target.username} Ses Verileri`, iconURL: target.displayAvatarURL() })
-        .setColor(isLive ? "Green" : "Blurple")
-        .setThumbnail(target.displayAvatarURL({ dynamic: true }))
-        .addFields(
-            { name: "🏷️ Rütbe", value: `\`${currentTier.label}\``, inline: true },
-            { name: "⏱️ Toplam Süre", value: `\`${hours} sa ${mins} dk\``, inline: true },
-            { name: "📈 Sonraki Hedef", value: progressStr, inline: false }
-        )
-        .setFooter({ text: isLive ? "🟢 Şu an konuşuyor..." : "Çevrimdışı veriler", iconURL: msg.guild.iconURL() });
+        let desc = "";
+        top.forEach((u, i) => {
+            let member = msg.guild.members.cache.get(u.userId);
+            const name = member ? member.user.username : "Bilinmeyen";
 
-    return msg.reply({ embeds: [embed] });
-}
+            const rank = i + 1;
+            const emoji = rank === 1 ? "🥇" : rank === 2 ? "🥈" : rank === 3 ? "🥉" : `\`#${rank}\``;
+            const style = rank <= 3 ? "**" : "";
 
-if (cmd === "csıralama") {
-    const top = await ChatUser.find().sort({ level: -1, xp: -1 }).limit(10);
-    if (!top.length) return msg.reply("Henüz veri yok.");
+            desc += `${emoji} ${style}${name}${style}\n└ 🟦 Lvl: \`${u.level}\` • Msj: \`${u.totalMsg}\`\n`;
+        });
 
-    let desc = "";
-    top.forEach((u, i) => {
-        let member = msg.guild.members.cache.get(u.userId);
-        const name = member ? member.user.username : "Bilinmeyen";
-        
-        const rank = i + 1;
-        const emoji = rank === 1 ? "🥇" : rank === 2 ? "🥈" : rank === 3 ? "🥉" : `\`#${rank}\``;
-        const style = rank <= 3 ? "**" : ""; // İlk 3 kalın yazılır
+        const embed = new EmbedBuilder()
+            .setTitle("🏆 Chat Lider Tablosu")
+            .setColor("Gold")
+            .setDescription(desc)
+            .setFooter({ text: "Sıralama anlık güncellenir." });
 
-        desc += `${emoji} ${style}${name}${style}\n└ 🟦 Lvl: \`${u.level}\` • Msj: \`${u.totalMsg}\`\n`;
-    });
+        return msg.reply({ embeds: [embed] });
+    }
 
-    const embed = new EmbedBuilder()
-        .setTitle("🏆 Chat Lider Tablosu")
-        .setColor("Gold")
-        .setDescription(desc)
-        .setFooter({ text: "Sıralama anlık güncellenir." });
+    // 4. [.vsıralama]
+    if (cmd === "vsıralama") {
+        const topUsers = await VoiceUser.find({ voiceMinutes: { $gt: 0 } }).sort({ voiceMinutes: -1 }).limit(10);
+        if (!topUsers.length) return msg.reply("Ses verisi yok.");
 
-    return msg.reply({ embeds: [embed] });
-}
+        let desc = "";
+        topUsers.forEach((u, i) => {
+            let member = msg.guild.members.cache.get(u.userId);
+            const name = member ? member.user.username : "Bilinmeyen";
+            const hours = (u.voiceMinutes / 60).toFixed(1);
 
-if (cmd === "vsıralama") {
-    const topUsers = await VoiceUser.find({ voiceMinutes: { $gt: 0 } }).sort({ voiceMinutes: -1 }).limit(10);
-    if (!topUsers.length) return msg.reply("Ses verisi yok.");
+            const rank = i + 1;
+            const emoji = rank === 1 ? "🥇" : rank === 2 ? "🥈" : rank === 3 ? "🥉" : `\`#${rank}\``;
+            const style = rank <= 3 ? "**" : "";
 
-    let desc = "";
-    topUsers.forEach((u, i) => {
-        let member = msg.guild.members.cache.get(u.userId);
-        const name = member ? member.user.username : "Bilinmeyen";
-        const hours = (u.voiceMinutes / 60).toFixed(1);
+            desc += `${emoji} ${style}${name}${style}\n└ 🎙️ \`${hours} Saat\`\n`;
+        });
 
-        const rank = i + 1;
-        const emoji = rank === 1 ? "🥇" : rank === 2 ? "🥈" : rank === 3 ? "🥉" : `\`#${rank}\``;
-        const style = rank <= 3 ? "**" : "";
+        const embed = new EmbedBuilder()
+            .setTitle("🎙️ Ses Lider Tablosu")
+            .setColor("DarkVividPink")
+            .setDescription(desc)
+            .setFooter({ text: "En çok konuşanlar" });
 
-        desc += `${emoji} ${style}${name}${style}\n└ 🎙️ \`${hours} Saat\`\n`;
-    });
+        return msg.reply({ embeds: [embed] });
+    }
 
-    const embed = new EmbedBuilder()
-        .setTitle("🎙️ Ses Lider Tablosu")
-        .setColor("DarkVividPink")
-        .setDescription(desc)
-        .setFooter({ text: "En çok konuşanlar" });
+    // 5. [.profil]
+    if (cmd === "profil" || cmd === "stats") {
+        const target = msg.mentions.users.first() || msg.author;
+        const member = await msg.guild.members.fetch(target.id).catch(() => null);
+        if (!member) return msg.reply("❌ Üye bulunamadı.");
 
-    return msg.reply({ embeds: [embed] });
-}
+        // --- CHAT Verileri ---
+        let chatUser = await ChatUser.findOne({ userId: target.id });
+        const chatLevel = chatUser ? chatUser.level : 0;
+        const chatXP = chatUser ? chatUser.xp : 0;
+        const totalMessages = chatUser ? chatUser.totalMsg : 0;
+
+        const MAX_CHAT_LEVEL = 100;
+        const isChatMaxed = chatLevel >= MAX_CHAT_LEVEL;
+
+        let chatProgressText = "";
+        let chatColor = "Blue";
+
+        if (isChatMaxed) {
+            chatProgressText = "👑 **MAX LEVEL**";
+            chatColor = "Gold";
+        } else {
+            const needXP = 100 + chatLevel * 200;
+            const chatBar = createProgressBar(chatXP, needXP);
+            chatProgressText = `${chatBar} \`(${chatXP} / ${needXP} XP)\``;
+        }
+
+        // --- SES Verileri ---
+        let voiceUser = await VoiceUser.findOne({ userId: target.id });
+        let totalVoiceMinutes = voiceUser ? voiceUser.voiceMinutes : 0;
+
+        let isVoiceLive = false;
+        if (voiceJoinTimes.has(target.id)) {
+            isVoiceLive = true;
+            const currentData = voiceJoinTimes.get(target.id);
+            let sessionMins = Math.floor((Date.now() - currentData.time) / 60000);
+            if (activeVoiceBoostKanal && currentData.channelId === activeVoiceBoostKanal) sessionMins *= CONF.BOOST_CARPANI;
+            totalVoiceMinutes += sessionMins;
+        }
+
+        const currentTier = [...VC_LEVELS].reverse().find(v => totalVoiceMinutes >= v.requiredMinutes) || { label: "Çaylak", requiredMinutes: 0 };
+        const nextTier = VC_LEVELS.find(v => totalVoiceMinutes < v.requiredMinutes);
+
+        let voiceProgressText = "";
+        let voiceRankLabel = `\`${currentTier.label}\``;
+
+        if (nextTier) {
+            const neededVoiceMins = nextTier.requiredMinutes - currentTier.requiredMinutes;
+            const currentVoiceMins = totalVoiceMinutes - currentTier.requiredMinutes;
+            const voiceBar = createProgressBar(currentVoiceMins, neededVoiceMins);
+            voiceProgressText = `${voiceBar}\n**${nextTier.label}** için \`${nextTier.requiredMinutes - totalVoiceMinutes} dk\` kaldı.`;
+        } else {
+            voiceProgressText = "🎉 **En Yüksek Ses Rütbesi!**\n🟦🟦🟦🟦🟦🟦🟦🟦🟦🟦 (%100)";
+            voiceRankLabel = "🏆 **Efsane**";
+            if (!isChatMaxed) chatColor = "Purple";
+        }
+
+        const voiceHours = Math.floor(totalVoiceMinutes / 60);
+        const voiceMinutes = totalVoiceMinutes % 60;
+        const voiceTimeDisplay = `${voiceHours} sa ${voiceMinutes} dk`;
+
+        const embed = new EmbedBuilder()
+            .setAuthor({ name: `👑 ${target.username} • Aktivite Kartı`, iconURL: target.displayAvatarURL({ dynamic: true }) })
+            .setColor(chatColor)
+            .setThumbnail(target.displayAvatarURL({ dynamic: true, size: 256 }))
+            .setDescription(`>>> **${target.username}**'ın sunucudaki toplam etkinlik özeti.`)
+            .addFields(
+                { name: "💬 Sohbet İstatistikleri", value: `**Seviye:** \`${chatLevel}\`\n**Toplam Mesaj:** \`${totalMessages.toLocaleString()}\`\n**XP İlerlemesi:**\n${chatProgressText}`, inline: false },
+                { name: "\u200b", value: "\u200b", inline: false },
+                { name: "🎙️ Ses İstatistikleri", value: `**Mevcut Rütbe:** ${voiceRankLabel}\n**Toplam Süre:** \`${voiceTimeDisplay}\`\n**Rütbe İlerlemesi:**\n${voiceProgressText}`, inline: false }
+            )
+            .setFooter({ text: `${isVoiceLive ? "🟢 Seste Aktif | " : ""}${msg.guild.name} • Aktivite Sistemi`, iconURL: msg.guild.iconURL() })
+            .setTimestamp();
+
+        return msg.reply({ embeds: [embed] });
+    }
+   
     // 6. [.kayıt] - Kayıt İşlemi
     if (cmd === "kayıt") {
         if (!msg.member.roles.cache.has(CONF.ROLE_YETKILI) && !isYonetici) return;
@@ -515,6 +574,7 @@ console.log(`Bot bu adres üzerinde çalışıyor: http://localhost:${port}`)//p
     process.on('uncaughtExceptionMonitor', (err, origin) => {
         console.log('⚠️ [Hata Yakalandı] - Exception Monitor:', err);
     });
+
 
 
 

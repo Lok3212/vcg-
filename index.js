@@ -104,14 +104,13 @@ let activeVoiceBoostKanal = null;
 
 // ================= YARDIMCI FONKSİYONLAR =================
 
-// 2. İlerleme Çubuğu (Gelişmiş)
+// 2. İlerleme Çubuğu (Senin İstediğin Mavi/Beyaz Tasarım)
 function createProgressBar(current, max = 100) {
     const percent = Math.min(Math.max(0, current), max) / max;
     const filled = Math.round(percent * 10);
     const empty = 10 - filled;
-    // Renkli kareler kullan
-    const barEmoji = current >= max * 0.8 ? "🟩" : current >= max * 0.4 ? "🟨" : "🟥"; 
-    // Not: Level sisteminde full yeşil de olabilir, risk analizinde kırmızı tehlikedir.
+    
+    // Mavi dolu, Beyaz boş kareler
     const bar = "🟦".repeat(filled) + "⬜".repeat(empty); 
     return `${bar} (%${Math.round(percent * 100)})`;
 }
@@ -274,93 +273,134 @@ client.on("messageCreate", async (msg) => {
     const args = msg.content.slice(PREFIX.length).trim().split(/\s+/);
     const cmd = args.shift().toLowerCase();
 
-    // 1. [.rank] - Gelişmiş Chat Rank
-    if (cmd === "rank") {
-        const target = msg.mentions.users.first() || msg.author;
-        const member = await msg.guild.members.fetch(target.id).catch(() => null);
-        if (!member) return msg.reply("❌ Üye bulunamadı.");
+if (cmd === "rank") {
+    const target = msg.mentions.users.first() || msg.author;
+    const member = await msg.guild.members.fetch(target.id).catch(() => null);
+    if (!member) return msg.reply("❌ Üye bulunamadı.");
 
-        let u = await ChatUser.findOne({ userId: target.id });
-        if (!u) return msg.reply("❌ Veri yok. Biraz sohbet edin!");
+    let u = await ChatUser.findOne({ userId: target.id });
+    if (!u) return msg.reply({ content: `**${target.username}**, henüz veri yok. Sohbet ederek maceraya başla!`, allowedMentions: { repliedUser: false } });
 
-        await checkSureRolleri(member);
-        const need = 100 + u.level * 200;
-        const bar = createProgressBar(u.xp, need);
+    await checkSureRolleri(member);
+    
+    const need = 100 + u.level * 200;
+    // Senin fonksiyonunu burada çağırıyoruz
+    const bar = createProgressBar(u.xp, need);
 
-        const embed = new EmbedBuilder()
-            .setAuthor({ name: `${target.username} Rank Kartı`, iconURL: target.displayAvatarURL() })
-            .setColor("Green")
-            .setThumbnail(target.displayAvatarURL({ dynamic: true }))
-            .setDescription(`**Seviye:** ${u.level}\n**XP:** ${u.xp} / ${need}\n**Mesaj:** ${u.totalMsg}`)
-            .addFields({ name: `İlerleme`, value: `${bar}`, inline: false })
-            .setFooter({ text: activeChatBoostKanal === msg.channel.id ? "🔥 Bu kanalda 2x XP Aktif!" : "Standart XP" });
-        return msg.reply({ embeds: [embed] });
+    const embed = new EmbedBuilder()
+        .setAuthor({ name: `🔹 ${target.username} Rank Profili`, iconURL: target.displayAvatarURL() })
+        .setColor("Blue") // Mavi bar ile uyumlu olsun diye Blue yaptık
+        .setThumbnail(target.displayAvatarURL({ dynamic: true }))
+        .setDescription(`>>> *Kullanıcının güncel seviye ve tecrübe detayları.*`)
+        .addFields(
+            { name: "💎 Seviye", value: `\`\`\`css\n[ ${u.level} ]\`\`\``, inline: true },
+            { name: "📝 Mesaj", value: `\`\`\`fix\n${u.totalMsg} Adet\`\`\``, inline: true },
+            { name: "📊 XP İlerlemesi", value: `${bar}\n\`Hedef: ${need} XP\``, inline: false }
+        )
+        .setFooter({ 
+            text: activeChatBoostKanal === msg.channel.id ? "🔥 Bu kanalda 2x XP Aktif!" : "Standart XP Kazanımı", 
+            iconURL: msg.guild.iconURL() 
+        });
+
+    return msg.reply({ embeds: [embed] });
+}
+if (cmd === "vc") {
+    const target = msg.mentions.users.first() || msg.author;
+    let user = await VoiceUser.findOne({ userId: target.id });
+    let totalMins = user ? user.voiceMinutes : 0;
+
+    let isLive = false;
+    if (voiceJoinTimes.has(target.id)) {
+        isLive = true;
+        const currentData = voiceJoinTimes.get(target.id);
+        let sessionMins = Math.floor((Date.now() - currentData.time) / 60000);
+        if (activeVoiceBoostKanal && currentData.channelId === activeVoiceBoostKanal) sessionMins *= CONF.BOOST_CARPANI;
+        totalMins += sessionMins;
     }
 
-    // 2. [.vc] - Gelişmiş Ses İstatistik
-    if (cmd === "vc") {
-        const target = msg.mentions.users.first() || msg.author;
-        let user = await VoiceUser.findOne({ userId: target.id });
-        let totalMins = user ? user.voiceMinutes : 0;
+    const currentTier = [...VC_LEVELS].reverse().find(v => totalMins >= v.requiredMinutes) || { label: "Çaylak", requiredMinutes: 0 };
+    const nextTier = VC_LEVELS.find(v => totalMins < v.requiredMinutes);
 
-        if (voiceJoinTimes.has(target.id)) {
-            const currentData = voiceJoinTimes.get(target.id);
-            let sessionMins = Math.floor((Date.now() - currentData.time) / 60000);
-            if (activeVoiceBoostKanal && currentData.channelId === activeVoiceBoostKanal) sessionMins *= CONF.BOOST_CARPANI;
-            totalMins += sessionMins;
-        }
-
-        const currentTier = [...VC_LEVELS].reverse().find(v => totalMins >= v.requiredMinutes) || { label: "Çaylak", requiredMinutes: 0 };
-        const nextTier = VC_LEVELS.find(v => totalMins < v.requiredMinutes);
-
-        let progressStr = "👑 Maksimum Rütbe!";
-        if (nextTier) {
-            const needed = nextTier.requiredMinutes - currentTier.requiredMinutes;
-            const current = totalMins - currentTier.requiredMinutes;
-            const bar = createProgressBar(current, needed);
-            progressStr = `${bar}\n**${nextTier.label}** için **${nextTier.requiredMinutes - totalMins}** dk kaldı.`;
-        }
-
-        const embed = new EmbedBuilder()
-            .setAuthor({ name: `${target.username} Ses İstatistiği`, iconURL: target.displayAvatarURL() })
-            .setColor("Gold")
-            .setThumbnail(target.displayAvatarURL())
-            .addFields(
-                { name: "Rütbe", value: `\`${currentTier.label}\``, inline: true },
-                { name: "Toplam Süre", value: `\`${Math.floor(totalMins / 60)} sa ${totalMins % 60} dk\``, inline: true },
-                { name: "Sıradaki Hedef", value: progressStr, inline: false }
-            );
-        return msg.reply({ embeds: [embed] });
+    let progressStr = "🎉 **Maksimum Seviye!**";
+    
+    if (nextTier) {
+        const needed = nextTier.requiredMinutes - currentTier.requiredMinutes;
+        const current = totalMins - currentTier.requiredMinutes;
+        
+        // Senin fonksiyonun kullanımı:
+        const bar = createProgressBar(current, needed);
+        
+        const kalan = nextTier.requiredMinutes - totalMins;
+        progressStr = `${bar}\n🔹 **${nextTier.label}** için son **${kalan} dk**`;
     }
 
-    // 3. [.csıralama] - Top 10 Chat
-    if (cmd === "csıralama") {
-        const top = await ChatUser.find().sort({ level: -1, xp: -1 }).limit(10);
-        if (!top.length) return msg.reply("Sıralama yok.");
-        const leaderboard = await Promise.all(top.map(async (u, i) => {
-            let member = msg.guild.members.cache.get(u.userId) || await msg.guild.members.fetch(u.userId).catch(() => null);
-            const name = member ? member.user.username : "Bilinmeyen";
-            return `\`${i+1}.\` **${name}** • Lvl ${u.level} • ${u.totalMsg} Msj`;
-        }));
-        const embed = new EmbedBuilder().setTitle("🏆 Chat Sıralaması").setColor("Blurple").setDescription(leaderboard.join("\n"));
-        return msg.reply({ embeds: [embed] });
-    }
+    const hours = Math.floor(totalMins / 60);
+    const mins = totalMins % 60;
 
-    // 4. [.vsıralama] - Top 10 Ses
-    if (cmd === "vsıralama") {
-        const topUsers = await VoiceUser.find({ voiceMinutes: { $gt: 0 } }).sort({ voiceMinutes: -1 }).limit(10);
-        if (topUsers.length === 0) return msg.reply("Ses verisi yok.");
-        let desc = "";
-        for (let i = 0; i < topUsers.length; i++) {
-            const u = topUsers[i];
-            let member = msg.guild.members.cache.get(u.userId) || await msg.guild.members.fetch(u.userId).catch(() => null);
-            const name = member ? member.user.username : "Bilinmeyen";
-            desc += `\`${i+1}.\` **${name}** • ${(u.voiceMinutes / 60).toFixed(1)} Saat\n`;
-        }
-        const embed = new EmbedBuilder().setTitle("🎙️ Top 10 Ses").setDescription(desc).setColor("#FFD700");
-        return msg.reply({ embeds: [embed] });
-    }
+    const embed = new EmbedBuilder()
+        .setAuthor({ name: `${target.username} Ses Verileri`, iconURL: target.displayAvatarURL() })
+        .setColor(isLive ? "Green" : "Blurple")
+        .setThumbnail(target.displayAvatarURL({ dynamic: true }))
+        .addFields(
+            { name: "🏷️ Rütbe", value: `\`${currentTier.label}\``, inline: true },
+            { name: "⏱️ Toplam Süre", value: `\`${hours} sa ${mins} dk\``, inline: true },
+            { name: "📈 Sonraki Hedef", value: progressStr, inline: false }
+        )
+        .setFooter({ text: isLive ? "🟢 Şu an konuşuyor..." : "Çevrimdışı veriler", iconURL: msg.guild.iconURL() });
 
+    return msg.reply({ embeds: [embed] });
+}
+
+if (cmd === "csıralama") {
+    const top = await ChatUser.find().sort({ level: -1, xp: -1 }).limit(10);
+    if (!top.length) return msg.reply("Henüz veri yok.");
+
+    let desc = "";
+    top.forEach((u, i) => {
+        let member = msg.guild.members.cache.get(u.userId);
+        const name = member ? member.user.username : "Bilinmeyen";
+        
+        const rank = i + 1;
+        const emoji = rank === 1 ? "🥇" : rank === 2 ? "🥈" : rank === 3 ? "🥉" : `\`#${rank}\``;
+        const style = rank <= 3 ? "**" : ""; // İlk 3 kalın yazılır
+
+        desc += `${emoji} ${style}${name}${style}\n└ 🟦 Lvl: \`${u.level}\` • Msj: \`${u.totalMsg}\`\n`;
+    });
+
+    const embed = new EmbedBuilder()
+        .setTitle("🏆 Chat Lider Tablosu")
+        .setColor("Gold")
+        .setDescription(desc)
+        .setFooter({ text: "Sıralama anlık güncellenir." });
+
+    return msg.reply({ embeds: [embed] });
+}
+
+if (cmd === "vsıralama") {
+    const topUsers = await VoiceUser.find({ voiceMinutes: { $gt: 0 } }).sort({ voiceMinutes: -1 }).limit(10);
+    if (!topUsers.length) return msg.reply("Ses verisi yok.");
+
+    let desc = "";
+    topUsers.forEach((u, i) => {
+        let member = msg.guild.members.cache.get(u.userId);
+        const name = member ? member.user.username : "Bilinmeyen";
+        const hours = (u.voiceMinutes / 60).toFixed(1);
+
+        const rank = i + 1;
+        const emoji = rank === 1 ? "🥇" : rank === 2 ? "🥈" : rank === 3 ? "🥉" : `\`#${rank}\``;
+        const style = rank <= 3 ? "**" : "";
+
+        desc += `${emoji} ${style}${name}${style}\n└ 🎙️ \`${hours} Saat\`\n`;
+    });
+
+    const embed = new EmbedBuilder()
+        .setTitle("🎙️ Ses Lider Tablosu")
+        .setColor("DarkVividPink")
+        .setDescription(desc)
+        .setFooter({ text: "En çok konuşanlar" });
+
+    return msg.reply({ embeds: [embed] });
+}
     // 6. [.kayıt] - Kayıt İşlemi
     if (cmd === "kayıt") {
         if (!msg.member.roles.cache.has(CONF.ROLE_YETKILI) && !isYonetici) return;
@@ -441,6 +481,7 @@ console.log(`Bot bu adres üzerinde çalışıyor: http://localhost:${port}`)//p
     process.on('uncaughtExceptionMonitor', (err, origin) => {
         console.log('⚠️ [Hata Yakalandı] - Exception Monitor:', err);
     });
+
 
 
 

@@ -237,55 +237,65 @@ client.on("voiceStateUpdate", async (oldState, newState) => {
 client.on("messageCreate", async (msg) => {
     if (msg.author.bot || !msg.guild) return;
 
-// [B] XP SİSTEMİ (Tam Fixli ve Parantez Kontrollü)
+// =================================================================
+    // [B] XP SİSTEMİ (TAM FİXLİ VERSİYON)
+    // =================================================================
     if (!xpCooldowns.has(msg.author.id)) {
+        // 'user' yerine 'chatUser' kullanarak çakışmaları önledik
         let chatUser = await ChatUser.findOne({ userId: msg.author.id });
-        if (!chatUser) chatUser = await ChatUser.create({ userId: msg.author.id });
+        if (!chatUser) {
+            chatUser = await ChatUser.create({ userId: msg.author.id });
+        }
 
         chatUser.totalMsg++;
-        let xpGain = Math.floor(Math.random() * 10) + 15;
+        let xpEkle = Math.floor(Math.random() * 10) + 15;
         
-        // Boost Kanal Kontrolü
+        // Boost kanalı kontrolü
         if (typeof activeChatBoostKanal !== 'undefined' && activeChatBoostKanal === msg.channel.id) {
-            xpGain *= 2;
+            xpEkle *= 2;
         }
-        
-        chatUser.xp += xpGain;
-        let neededXP = 100 + chatUser.level * 200;
 
-        // --- WHILE DÖNGÜSÜ ---
-        while (chatUser.xp >= neededXP && chatUser.level < 100) {
-            chatUser.xp -= neededXP;
+        chatUser.xp += xpEkle;
+        let gerekenXP = 100 + (chatUser.level * 200);
+
+        // --- Level Atlama Döngüsü ---
+        while (chatUser.xp >= gerekenXP && chatUser.level < 100) {
+            chatUser.xp -= gerekenXP;
             chatUser.level++;
-            neededXP = 100 + chatUser.level * 200;
+            gerekenXP = 100 + (chatUser.level * 200);
 
-            const levelRole = CHAT_LEVEL_ROLES.find(r => r.level === chatUser.level);
-            if (levelRole) {
-                // Eski level rollerini temizle
-                await msg.member.roles.remove(CHAT_LEVEL_ROLES.flatMap(r => r.roleId)).catch(() => {});
+            // Mevcut level için rol var mı kontrol et
+            const levelRolData = CHAT_LEVEL_ROLES.find(r => r.level === chatUser.level);
+            
+            if (levelRolData) {
+                // Diğer level rollerini temizle (Misafir ve Üye ID'leri CHAT_LEVEL_ROLES listesinde yoksa onlara dokunmaz)
+                const silinecekRoller = CHAT_LEVEL_ROLES.flatMap(r => r.roleId);
+                await msg.member.roles.remove(silinecekRoller).catch(() => {});
                 
                 // Yeni level rolünü ver
-                await msg.member.roles.add(levelRole.roleId).catch(() => {});
+                await msg.member.roles.add(levelRolData.roleId).catch(() => {});
 
-                // Level 10+ Üye Rolü Kontrolü
+                // LEVEL 10 VE ÜZERİ İÇİN ANA ÜYE ROLÜNÜ EKLE (MİSAFİRİ SİLMEZ)
                 if (chatUser.level >= 10) {
-                    const uyeRolID = "1411088827556171937";
-                    if (!msg.member.roles.cache.has(uyeRolID)) {
-                        await msg.member.roles.add(uyeRolID).catch(() => {});
+                    const anaUyeRolID = "1411088827556171937";
+                    if (!msg.member.roles.cache.has(anaUyeRolID)) {
+                        await msg.member.roles.add(anaUyeRolID).catch(() => {});
                     }
                 }
             }
 
-            const logKanal = client.channels.cache.get(CONF.LOG_KANAL_CHAT_LEVEL);
-            if (logKanal) {
-                logKanal.send(`🎉 <@${msg.author.id}> **${chatUser.level}. Seviye Oldunuz!**`);
+            // Log kanalına mesaj gönder
+            const levelLogKanal = client.channels.cache.get(CONF.LOG_KANAL_CHAT_LEVEL);
+            if (levelLogKanal) {
+                levelLogKanal.send(`🎉 <@${msg.author.id}> **${chatUser.level}. Seviye Oldunuz!**`).catch(() => {});
             }
         } 
-        // --- WHILE BİTİŞ ---
+        // --- Döngü Bitişi ---
 
         await chatUser.save();
-        xpCooldowns.add(msg.author.id);
         
+        // Cooldown Ayarı
+        xpCooldowns.add(msg.author.id);
         setTimeout(() => {
             xpCooldowns.delete(msg.author.id);
         }, CONF.CHAT_COOLDOWN);
@@ -293,8 +303,8 @@ client.on("messageCreate", async (msg) => {
         if (!chatUser.joinedAt && msg.member?.joinedAt) {
             chatUser.joinedAt = msg.member.joinedAt;
         }
-    } // Bu parantez if (!xpCooldowns.has... kısmını kapatır.
-
+    }
+    // =================================================================
     // [C] KOMUT YÖNETİCİSİ
     if (!msg.content.startsWith(PREFIX)) return;
     const args = msg.content.slice(PREFIX.length).trim().split(/\s+/);
@@ -629,6 +639,7 @@ console.log(`Bot bu adres üzerinde çalışıyor: http://localhost:${port}`)//p
     process.on('uncaughtExceptionMonitor', (err, origin) => {
         console.log('⚠️ [Hata Yakalandı] - Exception Monitor:', err);
     });
+
 
 
 

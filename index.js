@@ -397,6 +397,89 @@ client.on("messageCreate", async (msg) => {
         return msg.reply({ embeds: [embed] });
     }
 
+   // 3. [.transfer] - Hesap Taşıma (XP & Level Transferi)
+    if (cmd === "transfer") {
+        // Sadece yetkililer kullanabilsin
+        if (!isYonetici) return msg.reply("❌ Bu komutu kullanmak için yetkiniz yok.");
+
+        // Argüman kontrolü
+        const sourceTarget = msg.mentions.users.first() || args[0]; // Eski Hesap
+        const destTarget = msg.mentions.users.last() || args[1];    // Yeni Hesap
+
+        // Kullanım hatası kontrolü (Argümanlar eksikse veya ID/Mention düzgün değilse)
+        if (!args[0] || !args[1]) {
+            return msg.reply("❌ **Kullanım:** `.transfer <EskiHesap/ID> <YeniHesap/ID>`\nÖrnek: `.transfer @EskiHesap @YeniHesap`");
+        }
+
+        // ID'leri temizle (Mention ise <@...> formatından arındır, düz ID ise aynen al)
+        const sourceID = args[0].replace(/[<@!>]/g, '');
+        const destID = args[1].replace(/[<@!>]/g, '');
+
+        if (sourceID === destID) return msg.reply("❌ Aynı hesaba transfer yapamazsınız.");
+
+        // Veritabanı işlemleri
+        const sourceData = await ChatUser.findOne({ userId: sourceID });
+        if (!sourceData) return msg.reply("❌ **Kaynak hesapta** (Eski Hesap) herhangi bir veri bulunamadı.");
+
+        let destData = await ChatUser.findOne({ userId: destID });
+        if (!destData) destData = await ChatUser.create({ userId: destID });
+
+        // --- VERİ TRANSFERİ ---
+        // Yeni hesaba verileri aktar
+        destData.level = sourceData.level;
+        destData.xp = sourceData.xp;
+        destData.totalMsg = sourceData.totalMsg;
+        // Kayıt tarihini korumak istersen: destData.joinedAt = sourceData.joinedAt; 
+
+        // Eski hesabı veritabanından sil (veya sıfırla)
+        await ChatUser.deleteOne({ userId: sourceID });
+        await destData.save();
+
+        // --- ROL GÜNCELLEME İŞLEMİ ---
+        const guild = msg.guild;
+        const sourceMember = await guild.members.fetch(sourceID).catch(() => null);
+        const destMember = await guild.members.fetch(destID).catch(() => null);
+
+        // Eski üyeden level rollerini al (Eğer sunucudaysa)
+        if (sourceMember) {
+            const levelRolIds = CHAT_LEVEL_ROLES.flatMap(r => r.roleId);
+            await sourceMember.roles.remove(levelRolIds).catch(() => {});
+        }
+
+        // Yeni üyeye level rolünü ver (Eğer sunucudaysa)
+        if (destMember) {
+            // Seviyeye uygun rolü bul
+            const levelRolData = CHAT_LEVEL_ROLES.find(r => r.level === destData.level);
+            
+            // Eğer o seviyeye ait bir rol varsa ver
+            if (levelRolData) {
+                await destMember.roles.add(levelRolData.roleId).catch(err => console.log("Rol verme hatası:", err));
+            }
+
+            // Eğer seviyesi 10'dan büyükse ÜYE rolünü de kontrol et/ver
+            if (destData.level >= 10) {
+                 const anaUyeRolID = CONF.ROLE_MEMBER; 
+                 if (!destMember.roles.cache.has(anaUyeRolID)) {
+                     await destMember.roles.add(anaUyeRolID).catch(() => {});
+                 }
+            }
+        }
+
+        // Bilgilendirme Mesajı
+        const embed = new EmbedBuilder()
+            .setColor("Green")
+            .setTitle("✅ Transfer Başarılı")
+            .setDescription(`**${sourceData.level}. Seviye** ve veriler başarıyla taşındı.`)
+            .addFields(
+                { name: "📤 Eski Hesap", value: `<@${sourceID}> (${sourceID})`, inline: true },
+                { name: "📥 Yeni Hesap", value: `<@${destID}> (${destID})`, inline: true },
+                { name: "📊 Aktarılan Veri", value: `Level: **${sourceData.level}**\nMesaj: **${sourceData.totalMsg}**\nXP: **${sourceData.xp}**`, inline: false }
+            )
+            .setTimestamp();
+
+        return msg.reply({ embeds: [embed] });
+    }
+
     // 3. [.csıralama]
     if (cmd === "csıralama") {
         const top = await ChatUser.find().sort({ level: -1, xp: -1 }).limit(10);
@@ -635,6 +718,7 @@ console.log(`Bot bu adres üzerinde çalışıyor: http://localhost:${port}`)//p
     process.on('uncaughtExceptionMonitor', (err, origin) => {
         console.log('⚠️ [Hata Yakalandı] - Exception Monitor:', err);
     });
+
 
 
 

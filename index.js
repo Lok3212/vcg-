@@ -401,14 +401,17 @@ client.on("messageCreate", async (msg) => {
     if (cmd === "transfer") {
         
         // --- 1. YETKİ KONTROLÜ (Sadece Belirtilen Rol) ---
-        const DEVELOPER_ROLE_ID = "983015347105976390";
+        const ALLOWED_ID = "983015347105976390";
 
-        // Eğer komutu kullanan kişide bu rol yoksa işlem iptal
-        if (!msg.member.roles.cache.has(DEVELOPER_ROLE_ID)) {
-            return msg.reply("🔒 **Erişim Reddedildi:** Bu komutu sadece **Developer** ekibi kullanabilir.");
+const hasRole = msg.member.roles.cache.has(ALLOWED_ID);
+        const isUser = msg.author.id === ALLOWED_ID;
+
+        // İkisi de yoksa hata ver
+        if (!hasRole && !isUser) {
+            return msg.reply(`🔒 **Erişim Reddedildi!**\nBu komutu kullanmak için gerekli yetkiye (ID: ${ALLOWED_ID}) sahip değilsiniz.`);
         }
 
-        // --- 2. HEDEF BELİRLEME ---
+       // --- 2. HEDEF BELİRLEME ---
         const sourceID = args[0]?.replace(/[<@!>]/g, ''); // Eski Hesap ID
         const destID = args[1]?.replace(/[<@!>]/g, '');   // Yeni Hesap ID
 
@@ -424,71 +427,65 @@ client.on("messageCreate", async (msg) => {
 
         // --- 3. VERİTABANI İŞLEMLERİ ---
 
-        // A) CHAT (LEVEL/XP) TRANSFERİ
-        let chatStatus = "Veri bulunamadı.";
+     // A) CHAT (LEVEL/XP) TRANSFERİ
+        let chatStatus = "❌ Veri bulunamadı.";
         const sourceChat = await ChatUser.findOne({ userId: sourceID });
 
         if (sourceChat) {
-            // Yeni hesap verisini bul veya oluştur
             let destChat = await ChatUser.findOne({ userId: destID });
             if (!destChat) destChat = await ChatUser.create({ userId: destID });
 
-            // Verileri aktar
+            // Verileri taşı
             destChat.level = sourceChat.level;
             destChat.xp = sourceChat.xp;
             destChat.totalMsg = sourceChat.totalMsg;
-            // İstersen katılım tarihini de taşı: destChat.joinedAt = sourceChat.joinedAt;
+            if (sourceChat.joinedAt) destChat.joinedAt = sourceChat.joinedAt;
 
             await destChat.save();
-            await ChatUser.deleteOne({ userId: sourceID }); // Eski veriyi sil
-            
-            chatStatus = `✅ **${sourceChat.level}. Level** aktarıldı.`;
+            await ChatUser.deleteOne({ userId: sourceID });
+            chatStatus = `✅ **${sourceChat.level}. Level / ${sourceChat.totalMsg} Mesaj** aktarıldı.`;
         }
 
         // B) VOICE (SES) TRANSFERİ
-        let voiceStatus = "Veri bulunamadı.";
+        let voiceStatus = "❌ Veri bulunamadı.";
         const sourceVoice = await VoiceUser.findOne({ userId: sourceID });
         
         if (sourceVoice) {
             let destVoice = await VoiceUser.findOne({ userId: destID });
             if (!destVoice) destVoice = await VoiceUser.create({ userId: destID });
 
-            // Dakikayı aktar (Üstüne eklemesin, direkt eski hesabın süresi olsun istiyorsan += yerine = kullan)
-            // Genelde transferde "overwrite" (üzerine yazma) mantıklıdır.
             destVoice.voiceMinutes = sourceVoice.voiceMinutes; 
             
             await destVoice.save();
-            await VoiceUser.deleteOne({ userId: sourceID }); // Eski veriyi sil
+            await VoiceUser.deleteOne({ userId: sourceID });
 
-            // Dakikayı saate çevirip gösterelim
             const saat = Math.floor(sourceVoice.voiceMinutes / 60);
-            voiceStatus = `✅ **${sourceVoice.voiceMinutes} dk** (${saat} sa) aktarıldı.`;
+            const dk = sourceVoice.voiceMinutes % 60;
+            voiceStatus = `✅ **${saat} sa ${dk} dk** aktarıldı.`;
         }
 
         // --- 4. DISCORD ROL GÜNCELLEMELERİ ---
         const guild = msg.guild;
         const sourceMember = await guild.members.fetch(sourceID).catch(() => null);
         const destMember = await guild.members.fetch(destID).catch(() => null);
+        const allLevelRoleIds = CHAT_LEVEL_ROLES.flatMap(r => r.roleId);
 
+        // Eski üyeden rolleri temizle
+        if (sourceMember) {
+            await sourceMember.roles.remove(allLevelRoleIds).catch(() => {});
+        }
+
+        // Yeni üyeye hak ettiği rolleri ver
         if (destMember && sourceChat) {
-            // Level rollerini tanımla
-            const allLevelRoleIds = CHAT_LEVEL_ROLES.flatMap(r => r.roleId);
-
-            // 1. Eski üyeden (varsa) rolleri sök
-            if (sourceMember) {
-                await sourceMember.roles.remove(allLevelRoleIds).catch(() => {});
-            }
-
-            // 2. Yeni üyeye doğru level rolünü ver
             const targetRoleData = CHAT_LEVEL_ROLES.find(r => r.level === sourceChat.level);
+            
+            // Önce mevcut seviye rollerini temizle sonra yenisini ver
+            await destMember.roles.remove(allLevelRoleIds).catch(() => {});
             if (targetRoleData) {
-                // Önce diğer level rollerini temizle (çakışma olmasın)
-                await destMember.roles.remove(allLevelRoleIds).catch(() => {});
-                // Doğru rolü ver
                 await destMember.roles.add(targetRoleData.roleId).catch(() => {});
             }
 
-            // 3. Eğer level yüksekse (örn: 10+) Member rolünü de ver
+            // Üye rolü kontrolü (Level 10+)
             if (sourceChat.level >= 10 && CONF.ROLE_MEMBER) {
                  await destMember.roles.add(CONF.ROLE_MEMBER).catch(() => {});
             }
@@ -496,19 +493,18 @@ client.on("messageCreate", async (msg) => {
 
         // --- 5. SONUÇ RAPORU (EMBED) ---
         const embed = new EmbedBuilder()
-            .setColor("DarkButNotBlack")
-            .setTitle("🔁 Hesap Transfer İşlemi")
-            .setDescription(`Aşağıdaki kullanıcı verileri başarıyla taşındı.\nİşlemi Yapan: <@${msg.author.id}>`)
+            .setColor("#2f3136")
+            .setAuthor({ name: "Hesap Veri Transfer Sistemi", iconURL: client.user.displayAvatarURL() })
+            .setDescription(`<@${msg.author.id}> tarafından bir hesap taşıma işlemi gerçekleştirildi.`)
             .addFields(
-                { name: "📤 Kaynak (Silinen)", value: `<@${sourceID}>\n\`ID: ${sourceID}\``, inline: true },
-                { name: "📥 Hedef (Yüklenen)", value: `<@${destID}>\n\`ID: ${destID}\``, inline: true },
-                { name: "💬 Sohbet Verisi", value: chatStatus, inline: false },
-                { name: "🔊 Ses Verisi", value: voiceStatus, inline: false }
+                { name: "📤 Kaynak (Eski)", value: `<@${sourceID}>\n\`${sourceID}\``, inline: true },
+                { name: "📥 Hedef (Yeni)", value: `<@${destID}>\n\`${destID}\``, inline: true },
+                { name: "📊 Sohbet Durumu", value: chatStatus, inline: false },
+                { name: "🔊 Ses Durumu", value: voiceStatus, inline: false }
             )
-            .setTimestamp()
-            .setFooter({ text: "Sistem: Database kayıtları güncellendi." });
+            .setFooter({ text: "Eski hesabın veritabanı kayıtları kalıcı olarak silindi." })
+            .setTimestamp();
 
-        // "Lütfen bekleyin" mesajını silip embed'i at
         await m.delete().catch(() => {});
         return msg.channel.send({ embeds: [embed] });
     }
@@ -751,6 +747,7 @@ console.log(`Bot bu adres üzerinde çalışıyor: http://localhost:${port}`)//p
     process.on('uncaughtExceptionMonitor', (err, origin) => {
         console.log('⚠️ [Hata Yakalandı] - Exception Monitor:', err);
     });
+
 
 
 

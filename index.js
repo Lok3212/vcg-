@@ -236,21 +236,6 @@ client.on("voiceStateUpdate", async (oldState, newState) => {
 client.on("messageCreate", async (msg) => {
     if (msg.author.bot || !msg.guild) return;
 
-   // Her komut için izinli kanal belirtebiliyorsun
-    const commandChannelRestrictions = {
-        'vc':  '1433201217563267214',   // müzik komutları sadece müzik kanalında
-        'rank':  '1433201217563267214',
-        'vsıralama':   '1433201217563267214',   // ban sadece yetkili kanalında
-        'csıralama':  '1433201217563267214',
-        // varsayılan olarak kısıtlama olmayan komutlar için undefined bırak
-    };
-
-    const requiredChannel = commandChannelRestrictions[commandName];
-    
-    if (requiredChannel && message.channel.id !== requiredChannel) {
-        return message.reply(`Bu komut sadece <#${requiredChannel}> kanalında kullanılabilir!`);
-    }
-
     // --- LEVEL BOTU İÇİN GEREKLİ TANIMLAMALAR ---
     // Hata veren 'isYonetici' ve 'user' kelimelerini burada tanımlıyoruz:
     const isYonetici = msg.member.permissions.has(PermissionsBitField.Flags.Administrator) || 
@@ -316,10 +301,31 @@ client.on("messageCreate", async (msg) => {
         }
     }
    
-    // [C] KOMUT YÖNETİCİSİ
-    if (!msg.content.startsWith(PREFIX)) return;
-    const args = msg.content.slice(PREFIX.length).trim().split(/\s+/);
-    const cmd = args.shift().toLowerCase();
+   // [C] KOMUT YÖNETİCİSİ
+if (!msg.content.startsWith(PREFIX)) return;
+
+const args = msg.content.slice(PREFIX.length).trim().split(/\s+/);
+const cmd = args.shift()?.toLowerCase();   // ← burası önemli: cmd tanımlı
+
+if (!cmd) return;
+
+// ────────────────────────────────────────────────
+// KANAL KISITLAMASI BURADA DEVREYE GİRECEK
+const commandChannelRestrictions = {
+    'vc':         '1433201217563267214',
+    'rank':       '1433201217563267214',
+    'vsıralama':  '1433201217563267214',
+    'csıralama':  '1433201217563267214',
+    'profil':     '1433201217563267214',
+    'kayıt':      '1433201217563267214',
+};
+
+const allowedChannelId = commandChannelRestrictions[cmd];
+
+if (allowedChannelId && msg.channel.id !== allowedChannelId) {
+    return msg.reply(`Bu komut sadece <#${allowedChannelId}> kanalında kullanılabilir!`)
+        .catch(() => {});   // yetki yoksa patlamasın
+}
 
     // 1. [.rank] - MAX Level Korumalı
     if (cmd === "rank") {
@@ -762,6 +768,7 @@ console.log(`Bot bu adres üzerinde çalışıyor: http://localhost:${port}`)//p
     process.on('uncaughtExceptionMonitor', (err, origin) => {
         console.log('⚠️ [Hata Yakalandı] - Exception Monitor:', err);
     });
+
 
 
 

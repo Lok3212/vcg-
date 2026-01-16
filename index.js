@@ -236,6 +236,21 @@ client.on("voiceStateUpdate", async (oldState, newState) => {
 client.on("messageCreate", async (msg) => {
     if (msg.author.bot || !msg.guild) return;
 
+   // Her komut için izinli kanal belirtebiliyorsun
+    const commandChannelRestrictions = {
+        'vc':  '1433201217563267214',   // müzik komutları sadece müzik kanalında
+        'rank':  '1433201217563267214',
+        'vsıralama':   '1433201217563267214',   // ban sadece yetkili kanalında
+        'csıralama':  '1433201217563267214',
+        // varsayılan olarak kısıtlama olmayan komutlar için undefined bırak
+    };
+
+    const requiredChannel = commandChannelRestrictions[commandName];
+    
+    if (requiredChannel && message.channel.id !== requiredChannel) {
+        return message.reply(`Bu komut sadece <#${requiredChannel}> kanalında kullanılabilir!`);
+    }
+
     // --- LEVEL BOTU İÇİN GEREKLİ TANIMLAMALAR ---
     // Hata veren 'isYonetici' ve 'user' kelimelerini burada tanımlıyoruz:
     const isYonetici = msg.member.permissions.has(PermissionsBitField.Flags.Administrator) || 
@@ -747,6 +762,7 @@ console.log(`Bot bu adres üzerinde çalışıyor: http://localhost:${port}`)//p
     process.on('uncaughtExceptionMonitor', (err, origin) => {
         console.log('⚠️ [Hata Yakalandı] - Exception Monitor:', err);
     });
+
 
 
 

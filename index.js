@@ -317,7 +317,7 @@ const commandChannelRestrictions = {
     'vsıralama':  '1433201217563267214',
     'csıralama':  '1433201217563267214',
     'profil':     '1433201217563267214',
-    'kayıt':      '1433201217563267214',
+    'kayıt':      '1411088828055294069',
 };
 
 const allowedChannelId = commandChannelRestrictions[cmd];
@@ -768,6 +768,7 @@ console.log(`Bot bu adres üzerinde çalışıyor: http://localhost:${port}`)//p
     process.on('uncaughtExceptionMonitor', (err, origin) => {
         console.log('⚠️ [Hata Yakalandı] - Exception Monitor:', err);
     });
+
 
 
 

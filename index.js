@@ -1,6 +1,6 @@
 /* ==================================================================================
    ULTIMATE DISCORD BOT: STATS + LEVEL + GUARD + SİCİL + KAYIT (FULL SÜRÜM)
-   Author: Gemini AI
+   Author: Ace
    ================================================================================== */
 
 require("dotenv").config();
@@ -768,6 +768,7 @@ console.log(`Bot bu adres üzerinde çalışıyor: http://localhost:${port}`)//p
     process.on('uncaughtExceptionMonitor', (err, origin) => {
         console.log('⚠️ [Hata Yakalandı] - Exception Monitor:', err);
     });
+
 
 
 

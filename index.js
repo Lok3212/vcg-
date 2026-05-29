@@ -26,7 +26,7 @@ const CONF = {
     BOT_SES_KANALI: "1411088828055294070",
 
     ROLE_YETKILI: "1411088827598110859",
-    ROLE_UNREGISTERED: "1411088827556171937",
+    ROLE_UNREGISTERED: "1411088827556171934",
     ROLE_MEMBER: "1411088827556171937",
 
     CHAT_COOLDOWN: 1500,
@@ -200,7 +200,7 @@ client.on("guildMemberAdd", async member => {
     await ChatUser.findOneAndUpdate({ userId: member.id }, { joinedAt: member.joinedAt }, { upsert: true });
 
     try {
-       
+        await member.setNickname("Kayıtsız | ??").catch(() => {});
         await member.roles.add(CONF.ROLE_UNREGISTERED).catch(() => {});
         const channel = member.guild.channels.cache.get(CONF.LOG_KANAL_WELCOME);
         if (channel) {

@@ -200,7 +200,7 @@ client.on("guildMemberAdd", async member => {
     await ChatUser.findOneAndUpdate({ userId: member.id }, { joinedAt: member.joinedAt }, { upsert: true });
 
     try {
-        await member.setNickname("Kayıtsız | ??").catch(() => {});
+       
         await member.roles.add(CONF.ROLE_UNREGISTERED).catch(() => {});
         const channel = member.guild.channels.cache.get(CONF.LOG_KANAL_WELCOME);
         if (channel) {

@@ -13,7 +13,7 @@ const {
 const mongoose = require("mongoose");
 const fs = require('fs');
 
-/* ================= AYARLAR & SABİTLER ============= ==== */
+/* ================= AYARLAR & SABİTLER ================= */
 
 const PREFIX = ".";
 
